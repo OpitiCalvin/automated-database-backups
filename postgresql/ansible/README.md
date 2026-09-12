@@ -32,27 +32,56 @@ Override role defaults (see `roles/pg_backup/defaults/main.yml`) in
 | `pg_backup_dir` / `pg_backup_log_dir` | Where backups/logs are written |
 | `pg_backup_days_to_keep` | Retention window (days) |
 | `pg_backup_cron_hour` / `pg_backup_cron_minute` | Schedule |
-| `pg_backup_use_pgpass` / `pg_backup_password` | Enable password auth via a templated `.pgpass` |
+| `pg_backup_use_pgpass` | Enable password auth via `.pgpass` (instead of peer/trust) |
+| `pg_backup_manage_pgpass` | `"auto"` (prefer an existing `.pgpass`, fall back to `pg_backup_password`), or force `true`/`false` — see [Password auth](#password-auth) |
+| `pg_backup_password` | Password used only when the role ends up rendering `.pgpass` itself |
 | `pg_backup_run_now` | Run the script once immediately after deploying, to smoke-test it |
 
 ## Password auth
 
-If the DB user can't rely on peer/trust auth, store the password in an
-Ansible Vault file and reference it:
+If the DB user can't rely on peer/trust auth, set `pg_backup_use_pgpass:
+true`. `pg_backup_manage_pgpass` controls where the file's contents come
+from, and defaults to `"auto"`:
+
+1. **Prefer a `.pgpass` already on the VM.** If
+   `pg_backup_pgpass_path` (default `/home/{{ pg_backup_os_user }}/.pgpass`)
+   already exists with `0600` permissions — placed manually, dropped by a
+   secrets agent (Vault, SOPS, etc.), or left over from a previous run —
+   the role leaves it alone and never touches `pg_backup_password` at
+   all. This is the strongest option: Ansible/Semaphore never see the
+   plaintext credential.
+2. **Fall back to `pg_backup_password` if it's missing or unsafe.** If
+   the file isn't there, or has the wrong permissions, the role renders
+   it from `pg_backup_password` instead. The simplest way to supply that
+   in this setup: create a Semaphore Environment, add
+   `pg_backup_password` marked as a **secret** value, and attach that
+   Environment to the Task Template — nothing is committed to git, and
+   Semaphore masks it in task logs.
+3. **Fail loudly if neither is available**, with a message telling you
+   to either provision the file or set `pg_backup_password`.
+
+You can override the auto-detection:
+
+```yaml
+pg_backup_manage_pgpass: true   # always render from pg_backup_password, even if a file already exists
+pg_backup_manage_pgpass: false  # always require an externally-provisioned file; never fall back
+```
+
+An Ansible Vault file is also a valid source for `pg_backup_password`
+if you'd rather not use Semaphore secrets (e.g. for ad-hoc runs outside
+Semaphore):
 
 ```bash
 ansible-vault create group_vars/postgresql_servers/vault.yml
 # vault_pg_backup_password: "supersecret"
 ```
 
-then set in `group_vars/postgresql_servers.yml`:
-
 ```yaml
-pg_backup_use_pgpass: true
 pg_backup_password: "{{ vault_pg_backup_password }}"
 ```
 
-and run with `--ask-vault-pass` or `--vault-password-file`.
+and run with `--ask-vault-pass` or `--vault-password-file` (or attach
+the vault password as a Semaphore Key Store entry — see below).
 
 ## Using with Semaphore UI
 

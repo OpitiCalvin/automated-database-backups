@@ -9,10 +9,25 @@ pg_backup_os_group: "calvin"
 # DB role used for pg_dump/pg_dumpall/psql
 pg_backup_db_user: "backup_user"
 
-# Set to true and provide pg_backup_password (store it in an Ansible Vault
-# encrypted file, e.g. group_vars/*/vault.yml) if the DB user needs password
-# auth instead of peer/trust auth for localhost connections.
+# Set to true if the DB user needs password auth (via .pgpass) instead of
+# peer/trust auth for localhost connections.
 pg_backup_use_pgpass: true
+
+# Controls how the .pgpass file's contents are sourced:
+#   "auto" (default) - prefer a .pgpass already present on the VM at
+#            pg_backup_pgpass_path (0600 perms, e.g. placed manually or by
+#            a secrets agent/Vault/SOPS). If it's missing or unsafe, fall
+#            back to rendering it from pg_backup_password instead (e.g. a
+#            Semaphore secret Environment variable).
+#   true   - always render/own the file from pg_backup_password.
+#   false  - always require an externally-provisioned file; fail if it's
+#            missing or unsafe rather than falling back to a password.
+pg_backup_manage_pgpass: "auto"
+
+# Only read when the file ends up being rendered (see pg_backup_manage_pgpass
+# above). Provide this via a Semaphore secret Environment variable or an
+# Ansible Vault file (e.g. group_vars/*/vault.yml) - never commit it in
+# plaintext.
 pg_backup_password: ""
 pg_backup_pgpass_path: "/home/{{ pg_backup_os_user }}/.pgpass"
 

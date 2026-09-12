@@ -21,15 +21,60 @@
     group: "{{ pg_backup_os_group }}"
     mode: "0750"
 
-- name: Deploy .pgpass for password-based authentication
+- name: Check for an existing .pgpass on the target host
+  ansible.builtin.stat:
+    path: "{{ pg_backup_pgpass_path }}"
+  register: pg_backup_pgpass_stat
+  when: pg_backup_use_pgpass | bool
+
+- name: Determine whether the existing .pgpass is present and safe
+  ansible.builtin.set_fact:
+    pg_backup_pgpass_external_ok: "{{ pg_backup_pgpass_stat.stat.exists and pg_backup_pgpass_stat.stat.mode == '0600' }}"
+  when: pg_backup_use_pgpass | bool
+
+- name: Decide whether this role should render .pgpass itself
+  ansible.builtin.set_fact:
+    pg_backup_should_manage_pgpass: >-
+      {{ (pg_backup_manage_pgpass | string | lower == 'true')
+         or (pg_backup_manage_pgpass | string | lower == 'auto'
+             and not (pg_backup_pgpass_external_ok | default(false) | bool)) }}
+  when: pg_backup_use_pgpass | bool
+
+- name: Fail if no existing .pgpass was found/safe and no password is available to render one
+  ansible.builtin.assert:
+    that:
+      - pg_backup_password | length > 0
+    fail_msg: >-
+      No usable .pgpass was found at {{ pg_backup_pgpass_path }} (missing or
+      not mode 0600), and pg_backup_password is empty. Either place a valid
+      .pgpass there yourself, or set pg_backup_password (e.g. via a
+      Semaphore secret Environment variable) so this role can create it.
+  when: pg_backup_use_pgpass | bool and pg_backup_should_manage_pgpass | bool
+
+- name: Render .pgpass from pg_backup_password
   ansible.builtin.template:
     src: pgpass.j2
     dest: "{{ pg_backup_pgpass_path }}"
     owner: "{{ pg_backup_os_user }}"
     group: "{{ pg_backup_os_group }}"
     mode: "0600"
-  when: pg_backup_use_pgpass | bool
+  when: pg_backup_use_pgpass | bool and pg_backup_should_manage_pgpass | bool
   no_log: true
+
+- name: Fail if pg_backup_manage_pgpass is false but no safe externally-managed .pgpass exists
+  ansible.builtin.assert:
+    that:
+      - pg_backup_pgpass_external_ok | bool
+    fail_msg: >-
+      pg_backup_manage_pgpass is false, so this role expects
+      {{ pg_backup_pgpass_path }} to already exist (mode 0600, owned by
+      {{ pg_backup_os_user }}) on the target host. Provision it out of
+      band, or set pg_backup_manage_pgpass to "auto" or true and provide
+      pg_backup_password.
+  when: >-
+    pg_backup_use_pgpass | bool
+    and pg_backup_manage_pgpass | string | lower == 'false'
+    and not (pg_backup_pgpass_external_ok | bool)
 
 - name: Deploy pg_backup.sh script
   ansible.builtin.template:
