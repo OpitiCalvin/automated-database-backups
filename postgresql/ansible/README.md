@@ -9,7 +9,17 @@ Deploys and schedules the hybrid PostgreSQL backup workflow from
 4. Templates the backup script (globals dump, per-database custom-format
    dumps, `pg_restore -l` validation, corrupt-file quarantine, and
    retention cleanup) to the target host.
-5. Schedules it via cron.
+5. Runs it.
+
+Scheduling is meant to be owned by **Semaphore's own Task Template
+Schedule** (a cron expression configured in Semaphore, not on the target
+VM) — see [Using with Semaphore UI](#using-with-semaphore-ui). Each
+scheduled run re-applies the idempotent setup steps and then executes
+the backup, so config drift self-heals and every run is a fresh backup.
+An OS-level cron job on the target host is also supported
+(`pg_backup_cron_enabled: true`) for cases where you want the host to
+schedule itself independently of Semaphore, but leave it off (default)
+when Semaphore is the scheduler to avoid double backups.
 
 ## Usage
 
@@ -31,11 +41,12 @@ Override role defaults (see `roles/pg_backup/defaults/main.yml`) in
 | `pg_backup_os_user` | OS user that owns the script/cron job (peer auth normally requires this to match `pg_backup_db_user`) |
 | `pg_backup_dir` / `pg_backup_log_dir` | Where backups/logs are written |
 | `pg_backup_days_to_keep` | Retention window (days) |
-| `pg_backup_cron_hour` / `pg_backup_cron_minute` | Schedule |
+| `pg_backup_cron_enabled` | Also schedule via OS crontab on the target host (default `false` — leave off when Semaphore's own Schedule is the scheduler) |
+| `pg_backup_cron_hour` / `pg_backup_cron_minute` | Only used when `pg_backup_cron_enabled: true` |
 | `pg_backup_use_pgpass` | Enable password auth via `.pgpass` (instead of peer/trust) |
 | `pg_backup_manage_pgpass` | `"auto"` (prefer an existing `.pgpass`, fall back to `pg_backup_password`), or force `true`/`false` — see [Password auth](#password-auth) |
 | `pg_backup_password` | Password used only when the role ends up rendering `.pgpass` itself |
-| `pg_backup_run_now` | Run the script once immediately after deploying, to smoke-test it |
+| `pg_backup_run_now` | Execute the backup during this run (default `true` — this is what makes a scheduled Semaphore run actually take a backup; set `false` for a deploy-only run) |
 
 ## Password auth
 
@@ -119,6 +130,24 @@ wire it up:
    regardless of Semaphore's working directory, and Semaphore supplies
    its own `-i` flag so the checked-in `ansible.cfg`'s inventory default
    is only used for ad-hoc runs outside Semaphore.
+7. **Schedule** — add a Schedule to that Task Template with your desired
+   cron expression (e.g. `0 2 * * *` for nightly at 02:00). With the
+   defaults (`pg_backup_run_now: true`, `pg_backup_cron_enabled: false`),
+   every scheduled Semaphore run both re-applies the idempotent setup
+   (packages/dirs/script/`.pgpass`) and executes a backup — no cron job
+   on the DB VM itself.
+
+Two optional Task Templates if you'd rather separate "apply config" from
+"take a backup" (e.g. to redeploy the script without triggering a
+backup, or to trigger a backup on-demand without the setup checks):
+
+| Template | Playbook Filename / args |
+| --- | --- |
+| Deploy config | `postgresql/ansible/playbook.yml` with CLI arg `--tags deploy` |
+| Run backup | `postgresql/ansible/playbook.yml` with CLI arg `--tags run` |
+
+Put the Schedule on the "Run backup" template in that case; run "Deploy
+config" manually whenever role variables or the script template change.
 
 ### Terraform
 

@@ -47,8 +47,13 @@ pg_backup_packages:
   RedHat:
     - postgresql
 
-# --- Scheduling (cron) ---
-pg_backup_cron_enabled: true
+# --- Scheduling ---
+# Leave pg_backup_cron_enabled false (default) when a Semaphore Schedule on
+# this playbook's Task Template is what triggers backups - the OS cron job
+# would otherwise run backups independently and double them up. Set it true
+# only if the target host should also (or instead) schedule backups itself
+# via its own crontab, independent of Semaphore.
+pg_backup_cron_enabled: false
 pg_backup_cron_name: "PostgreSQL automated backup"
 pg_backup_cron_minute: "0"
 pg_backup_cron_hour: "2"
@@ -56,5 +61,8 @@ pg_backup_cron_day: "*"
 pg_backup_cron_month: "*"
 pg_backup_cron_weekday: "*"
 
-# Run the backup script once immediately after deployment to verify it works
-pg_backup_run_now: false
+# Execute pg_backup.sh during this playbook run. Defaults to true so that a
+# Semaphore Schedule simply running this playbook on a cron expression
+# performs an actual backup each time. Set to false for a deploy-only run
+# (e.g. to update the script/config without taking a backup).
+pg_backup_run_now: true
