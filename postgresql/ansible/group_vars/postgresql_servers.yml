@@ -1,0 +1,17 @@
+---
+# Overrides for role defaults (see roles/pg_backup/defaults/main.yml).
+pg_backup_dir: "/var/backups/postgresql"
+pg_backup_log_dir: "/var/log/postgresql_backups"
+pg_backup_days_to_keep: 120
+pg_backup_db_user: "backup_user"
+pg_backup_os_user: "postgres"
+
+pg_backup_cron_hour: "2"
+pg_backup_cron_minute: "0"
+
+# If the DB user needs password auth rather than peer/trust auth for
+# localhost connections, set this to true and define pg_backup_password
+# in an Ansible Vault encrypted file (e.g. group_vars/postgresql_servers/vault.yml)
+# then run the playbook with --ask-vault-pass or --vault-password-file.
+pg_backup_use_pgpass: false
+# pg_backup_password: "{{ vault_pg_backup_password }}"

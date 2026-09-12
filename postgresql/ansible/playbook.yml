@@ -1,0 +1,9 @@
+---
+- name: Configure automated PostgreSQL backups
+  # Overridable so this play matches whatever group/host pattern the
+  # inventory (Semaphore-managed or file-based) actually defines, e.g.
+  # -e pg_backup_target_hosts=backup_targets
+  hosts: "{{ pg_backup_target_hosts | default('postgresql_servers') }}"
+  become: true
+  roles:
+    - pg_backup

@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: pg_backup
+  description: Deploys and schedules the hybrid PostgreSQL backup script (globals + per-database custom-format dumps with validation and retention cleanup).
+  author: Opiti, Calvin
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions: [bullseye, bookworm]
+    - name: Ubuntu
+      versions: [focal, jammy, noble]
+    - name: EL
+      versions: [8, 9]
+dependencies: []

@@ -1,0 +1,45 @@
+---
+# --- Connection settings ---
+pg_backup_host: "localhost"
+pg_backup_port: 5432
+# OS user that owns/runs the backup (should match a role that can authenticate,
+# e.g. via peer auth when this equals the postgres OS user, or via .pgpass)
+pg_backup_os_user: "calvin"
+pg_backup_os_group: "calvin"
+# DB role used for pg_dump/pg_dumpall/psql
+pg_backup_db_user: "backup_user"
+
+# Set to true and provide pg_backup_password (store it in an Ansible Vault
+# encrypted file, e.g. group_vars/*/vault.yml) if the DB user needs password
+# auth instead of peer/trust auth for localhost connections.
+pg_backup_use_pgpass: true
+pg_backup_password: ""
+pg_backup_pgpass_path: "/home/{{ pg_backup_os_user }}/.pgpass"
+
+# --- Backup/log locations ---
+pg_backup_dir: "/var/backups/postgresql"
+pg_backup_log_dir: "/var/log/postgresql_backups"
+pg_backup_days_to_keep: 120
+
+# --- Script deployment ---
+pg_backup_script_path: "/usr/local/bin/pg_backup.sh"
+
+# --- Package installation ---
+pg_backup_install_packages: true
+pg_backup_packages:
+  Debian:
+    - postgresql-client
+  RedHat:
+    - postgresql
+
+# --- Scheduling (cron) ---
+pg_backup_cron_enabled: true
+pg_backup_cron_name: "PostgreSQL automated backup"
+pg_backup_cron_minute: "0"
+pg_backup_cron_hour: "2"
+pg_backup_cron_day: "*"
+pg_backup_cron_month: "*"
+pg_backup_cron_weekday: "*"
+
+# Run the backup script once immediately after deployment to verify it works
+pg_backup_run_now: false

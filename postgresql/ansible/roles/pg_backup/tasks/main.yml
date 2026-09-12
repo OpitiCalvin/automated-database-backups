@@ -1,0 +1,73 @@
+---
+- name: Install PostgreSQL client packages
+  ansible.builtin.package:
+    name: "{{ pg_backup_packages[ansible_facts['os_family']] }}"
+    state: present
+  when: pg_backup_install_packages | bool
+
+- name: Ensure backup directory exists
+  ansible.builtin.file:
+    path: "{{ pg_backup_dir }}"
+    state: directory
+    owner: "{{ pg_backup_os_user }}"
+    group: "{{ pg_backup_os_group }}"
+    mode: "0750"
+
+- name: Ensure log directory exists
+  ansible.builtin.file:
+    path: "{{ pg_backup_log_dir }}"
+    state: directory
+    owner: "{{ pg_backup_os_user }}"
+    group: "{{ pg_backup_os_group }}"
+    mode: "0750"
+
+- name: Deploy .pgpass for password-based authentication
+  ansible.builtin.template:
+    src: pgpass.j2
+    dest: "{{ pg_backup_pgpass_path }}"
+    owner: "{{ pg_backup_os_user }}"
+    group: "{{ pg_backup_os_group }}"
+    mode: "0600"
+  when: pg_backup_use_pgpass | bool
+  no_log: true
+
+- name: Deploy pg_backup.sh script
+  ansible.builtin.template:
+    src: pg_backup.sh.j2
+    dest: "{{ pg_backup_script_path }}"
+    owner: root
+    group: "{{ pg_backup_os_group }}"
+    mode: "0750"
+
+- name: Schedule pg_backup.sh via cron
+  ansible.builtin.cron:
+    name: "{{ pg_backup_cron_name }}"
+    user: "{{ pg_backup_os_user }}"
+    job: "{{ pg_backup_script_path }}"
+    minute: "{{ pg_backup_cron_minute }}"
+    hour: "{{ pg_backup_cron_hour }}"
+    day: "{{ pg_backup_cron_day }}"
+    month: "{{ pg_backup_cron_month }}"
+    weekday: "{{ pg_backup_cron_weekday }}"
+    state: present
+  when: pg_backup_cron_enabled | bool
+
+- name: Remove cron schedule
+  ansible.builtin.cron:
+    name: "{{ pg_backup_cron_name }}"
+    user: "{{ pg_backup_os_user }}"
+    state: absent
+  when: not (pg_backup_cron_enabled | bool)
+
+- name: Run pg_backup.sh now to verify it works
+  ansible.builtin.command: "{{ pg_backup_script_path }}"
+  become: true
+  become_user: "{{ pg_backup_os_user }}"
+  register: pg_backup_run_now_result
+  changed_when: true
+  when: pg_backup_run_now | bool
+
+- name: Show backup run output
+  ansible.builtin.debug:
+    var: pg_backup_run_now_result.stdout_lines
+  when: pg_backup_run_now | bool
