@@ -85,6 +85,57 @@
     and not (pg_backup_pgpass_external_ok | bool)
   tags: [deploy]
 
+- name: Determine the target PostgreSQL server's major version
+  ansible.builtin.command: >-
+    psql -h {{ pg_backup_host }} -p {{ pg_backup_port }} -U {{ pg_backup_db_user }}
+    -d postgres -tAc "SHOW server_version_num;"
+  become: true
+  become_user: "{{ pg_backup_os_user }}"
+  register: pg_backup_server_version_num
+  changed_when: false
+  tags: [deploy]
+
+- name: Compute PostgreSQL server major version
+  ansible.builtin.set_fact:
+    pg_backup_server_major: "{{ (pg_backup_server_version_num.stdout | trim | int) // 10000 }}"
+  tags: [deploy]
+
+- name: Check for versioned client binaries matching the server (Debian layout)
+  ansible.builtin.stat:
+    path: "/usr/lib/postgresql/{{ pg_backup_server_major }}/bin/pg_dump"
+  register: pg_backup_debian_bin_stat
+  tags: [deploy]
+
+- name: Check for versioned client binaries matching the server (RHEL/PGDG layout)
+  ansible.builtin.stat:
+    path: "/usr/pgsql-{{ pg_backup_server_major }}/bin/pg_dump"
+  register: pg_backup_rhel_bin_stat
+  tags: [deploy]
+
+- name: Determine the matching PostgreSQL client bin directory
+  ansible.builtin.set_fact:
+    pg_backup_pg_bin_dir: >-
+      {{ '/usr/lib/postgresql/' ~ pg_backup_server_major ~ '/bin' if pg_backup_debian_bin_stat.stat.exists
+         else ('/usr/pgsql-' ~ pg_backup_server_major ~ '/bin' if pg_backup_rhel_bin_stat.stat.exists else '') }}
+  tags: [deploy]
+
+- name: Fail if no client binaries match the server's major version
+  ansible.builtin.assert:
+    that:
+      - pg_backup_pg_bin_dir | length > 0
+    fail_msg: >-
+      The server reports major version {{ pg_backup_server_major }}, but no
+      matching pg_dump was found at
+      /usr/lib/postgresql/{{ pg_backup_server_major }}/bin or
+      /usr/pgsql-{{ pg_backup_server_major }}/bin. Install the client
+      package matching the running server (e.g.
+      postgresql-client-{{ pg_backup_server_major }} on Debian/Ubuntu, or
+      postgresql{{ pg_backup_server_major }} on RHEL/PGDG).
+    success_msg: >-
+      Using PostgreSQL {{ pg_backup_server_major }} client binaries from
+      {{ pg_backup_pg_bin_dir }}.
+  tags: [deploy]
+
 - name: Deploy pg_backup.sh script
   ansible.builtin.template:
     src: pg_backup.sh.j2

@@ -3,13 +3,17 @@
 Deploys and schedules the hybrid PostgreSQL backup workflow from
 [`pg_backup.sh`](../pg_backup.sh) via the `pg_backup` role:
 
-1. Installs PostgreSQL client tools (`pg_dump`, `pg_dumpall`, `psql`, `pg_restore`).
+1. Optionally installs PostgreSQL client tools (`pg_dump`, `pg_dumpall`,
+   `psql`, `pg_restore`) — off by default, see [Client tool version
+   matters](#client-tool-version-matters) below.
 2. Creates the backup and log directories.
 3. Optionally deploys a `.pgpass` file for password-based auth.
-4. Templates the backup script (globals dump, per-database custom-format
+4. Queries the target server's exact major version and locates the
+   matching versioned client binaries, failing fast if they're missing.
+5. Templates the backup script (globals dump, per-database custom-format
    dumps, `pg_restore -l` validation, corrupt-file quarantine, and
-   retention cleanup) to the target host.
-5. Runs it.
+   retention cleanup) to the target host, pinned to those binaries.
+6. Runs it.
 
 Scheduling is meant to be owned by **Semaphore's own Task Template
 Schedule** (a cron expression configured in Semaphore, not on the target
@@ -20,6 +24,61 @@ An OS-level cron job on the target host is also supported
 (`pg_backup_cron_enabled: true`) for cases where you want the host to
 schedule itself independently of Semaphore, but leave it off (default)
 when Semaphore is the scheduler to avoid double backups.
+
+## Client tool version matters
+
+`pg_dump` writes custom-format archives tagged with an internal format
+version tied to its own PostgreSQL major version. If `pg_restore` reads
+one with an **older** major version, validation fails on every single
+backup with:
+
+```text
+pg_restore: error: unsupported version (1.16) in file header
+```
+
+This isn't corruption, disk, or permissions — it means the `pg_dump`
+that wrote the file and the `pg_restore` that read it back are two
+different PostgreSQL major versions. It's easy to hit on a host with
+more than one client version installed (e.g. `dpkg -l | grep
+postgresql-client` shows both `postgresql-client-16` and
+`postgresql-client-18`): the distro's multi-version wrapper
+(`postgresql-client-common`) can resolve bare `pg_dump`/`pg_restore`/
+`psql` to *different* versions depending on context — `pg_dump` gets a
+`-h`/`-p` hint to pick the right cluster, but `pg_restore -l` (given
+only a local file) has no such hint and can land on whichever version
+the wrapper defaults to.
+
+Two changes close this off for good:
+
+1. **`pg_backup_install_packages` now defaults to `false`.** Because
+   `pg_backup_host` is `localhost`, this role runs directly on the DB
+   server, which already ships client tools matching its own version —
+   installing a second, unversioned `postgresql-client`/`postgresql`
+   package on top (the old default) is what introduces the second,
+   conflicting version in the first place.
+2. **The role never calls bare `pg_dump`/`pg_restore`/`psql`.** It
+   queries the target server's exact major version
+   (`SHOW server_version_num`), locates the matching versioned client
+   directory (`/usr/lib/postgresql/<major>/bin` on Debian/Ubuntu, or
+   `/usr/pgsql-<major>/bin` on RHEL/PGDG), fails the deploy immediately
+   if that directory doesn't exist, and bakes its absolute path into
+   the deployed script for every invocation. Ambiguous wrapper
+   resolution never comes into play, no matter how many client
+   versions end up installed on the box.
+
+If you hit this on an already-affected host:
+
+1. Re-run the playbook — the new preflight will report the server's
+   major version and fail clearly if the matching client package isn't
+   installed (e.g. install `postgresql-client-16` if the server is
+   v16), rather than let a version-mismatched backup run.
+2. Any dumps already quarantined as `*.dump.CORRUPT` from before the
+   fix are unusable and can be deleted once new backups validate
+   successfully.
+3. You can leave the extra client version (e.g. `postgresql-client-18`)
+   installed if something else on the box needs it — it's harmless now
+   that the script no longer relies on ambiguous bare-command
+   resolution.
 
 ## Usage
 

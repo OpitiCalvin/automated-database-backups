@@ -40,7 +40,15 @@ pg_backup_days_to_keep: 120
 pg_backup_script_path: "/usr/local/bin/pg_backup.sh"
 
 # --- Package installation ---
-pg_backup_install_packages: true
+# Default false: pg_backup_host is "localhost", so this role runs directly on
+# the DB server, which already has client tools matching the server's exact
+# version. Installing a second, generic/unversioned client package here can
+# put a DIFFERENT major version's pg_restore on PATH than the pg_dump that
+# wrote the archive, causing "unsupported version (x.x) in file header" and
+# every backup to fail validation. Only set this true (and pin an exact
+# version in pg_backup_packages) if this host genuinely has no client tools
+# yet.
+pg_backup_install_packages: false
 pg_backup_packages:
   Debian:
     - postgresql-client
