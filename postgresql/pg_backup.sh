@@ -5,7 +5,7 @@ DB_USER=""
 BACKUP_DIR=""
 LOG_DIR=""
 DAYS_TO_KEEP=120
-TIMESTAMP=$(date + "%Y%m%d_%H%M%S")
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="$LOG_DIR/backup_${TIMESTAMP}.log"
 
 # Create or ensure backup and log directories exist
@@ -19,6 +19,7 @@ log_message() {
     local MESSAGE="$2"
     local TIME=$(date +"%Y-%m-%d %H:%M:%S")
     echo "[$TIME] [$LOG_LEVEL] $MESSAGE" | tee -a "$LOG_FILE"
+}
 
 log_message "INFO" "=== Starting Hybrid PostgreSQL Backup Process ==="
 log_message "INFO" "Logs are being written to: $LOG_FILE"
@@ -74,7 +75,7 @@ log_message "INFO" "----------------------------------------"
 
 # 4. Clean up backups older than specified days
 log_message "INFO" "Cleaning up database backups older than $DAYS_TO_KEEP days..."
-find "$BACKUP_DIR" -type f \( -name "globals_*.sql.gz" -o -name "*.dump" \) -mtime +$DAYS_TO_KEEP - delete
+find "$BACKUP_DIR" -type f \( -name "globals_*.sql.gz" -o -name "*.dump" \) -mtime +$DAYS_TO_KEEP -delete
 
 # 5. Clean up old log files (keep logs for 30 days as well)
 log_message "INFO" "Cleaning up log files older than $DAYS_TO_KEEP days..."
