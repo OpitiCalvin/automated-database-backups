@@ -5,12 +5,30 @@ DB_USER=""
 BACKUP_DIR=""
 LOG_DIR=""
 DAYS_TO_KEEP=120
+# If BACKUP_DIR/LOG_DIR live on a separately-mounted filesystem (NAS,
+# external disk, etc.), set this to that mount's path. Leave empty to skip
+# the check. Without it, mkdir -p below would silently create the backup/log
+# directories on the root filesystem if the mount isn't attached, and
+# backups would "succeed" while quietly landing on the wrong disk.
+BACKUP_MOUNT_PATH=""
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="$LOG_DIR/backup_${TIMESTAMP}.log"
 
-# Create or ensure backup and log directories exist
-mkdir -p "$BACKUP_DIR"
-mkdir -p "$LOG_DIR"
+if [ -n "$BACKUP_MOUNT_PATH" ] && ! mountpoint -q "$BACKUP_MOUNT_PATH"; then
+    echo "ERROR: $BACKUP_MOUNT_PATH is not mounted. Refusing to write backups to the wrong filesystem." >&2
+    exit 1
+fi
+
+# Create or ensure backup and log directories exist; abort rather than
+# silently continue if either can't actually be created.
+if ! mkdir -p "$BACKUP_DIR"; then
+    echo "ERROR: Failed to create backup directory: $BACKUP_DIR" >&2
+    exit 1
+fi
+if ! mkdir -p "$LOG_DIR"; then
+    echo "ERROR: Failed to create log directory: $LOG_DIR" >&2
+    exit 1
+fi
 
 # --- LOGGING FUNCTION ---
 # This function prints to the terminal AND appends to the log file with a timestamp

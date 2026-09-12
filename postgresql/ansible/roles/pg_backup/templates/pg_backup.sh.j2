@@ -27,9 +27,27 @@ PSQL="$PG_BIN_DIR/psql"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="$LOG_DIR/backup_${TIMESTAMP}.log"
 
-# Create or ensure backup and log directories exist
-mkdir -p "$BACKUP_DIR"
-mkdir -p "$LOG_DIR"
+{% if pg_backup_require_mount %}
+# {{ pg_backup_mount_path }} is a separate mount (NAS/external disk). Refuse
+# to proceed if it isn't attached - otherwise mkdir -p below would silently
+# create the backup/log directories on the root filesystem instead, and
+# backups would "succeed" while quietly landing on the wrong disk.
+if ! mountpoint -q "{{ pg_backup_mount_path }}"; then
+    echo "ERROR: {{ pg_backup_mount_path }} is not mounted. Refusing to write backups to the wrong filesystem." >&2
+    exit 1
+fi
+
+{% endif %}
+# Create or ensure backup and log directories exist; abort rather than
+# silently continue if either can't actually be created.
+if ! mkdir -p "$BACKUP_DIR"; then
+    echo "ERROR: Failed to create backup directory: $BACKUP_DIR" >&2
+    exit 1
+fi
+if ! mkdir -p "$LOG_DIR"; then
+    echo "ERROR: Failed to create log directory: $LOG_DIR" >&2
+    exit 1
+fi
 
 # --- LOGGING FUNCTION ---
 # This function prints to the terminal AND appends to the log file with a timestamp

@@ -32,8 +32,20 @@ pg_backup_password: ""
 pg_backup_pgpass_path: "/home/{{ pg_backup_os_user }}/.pgpass"
 
 # --- Backup/log locations ---
-pg_backup_dir: "/var/backups/postgresql"
-pg_backup_log_dir: "/var/log/postgresql_backups"
+# If pg_backup_dir/pg_backup_log_dir live on a separately-mounted filesystem
+# (NAS, external disk, etc.), set pg_backup_require_mount: true and point
+# pg_backup_mount_path at that mount. The role then refuses to create either
+# directory unless the mount is actually attached - otherwise `file:
+# state=directory` would silently create them on the root filesystem if the
+# mount is missing (e.g. not yet attached after a reboot), and backups would
+# "succeed" while quietly landing on the wrong disk.
+pg_backup_require_mount: false
+pg_backup_mount_path: ""
+
+# pg_backup_dir: "/var/backups/postgresql"
+# pg_backup_log_dir: "/var/log/postgresql_backups"
+pg_backup_dir: "/mnt/homelab_backups/db_backups/postgresql"
+pg_backup_log_dir: "/mnt/homelab_backups/db_backups/logs"
 pg_backup_days_to_keep: 120
 
 # --- Script deployment ---

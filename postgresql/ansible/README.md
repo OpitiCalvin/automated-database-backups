@@ -99,6 +99,7 @@ Override role defaults (see `roles/pg_backup/defaults/main.yml`) in
 | `pg_backup_db_user` | DB role used for the dumps |
 | `pg_backup_os_user` | OS user that owns the script/cron job (peer auth normally requires this to match `pg_backup_db_user`) |
 | `pg_backup_dir` / `pg_backup_log_dir` | Where backups/logs are written |
+| `pg_backup_require_mount` / `pg_backup_mount_path` | If the dirs above live on a separate mount, require it to be mounted before creating them (default `false`) — see [Backup storage on a separate mount](#backup-storage-on-a-separate-mount) |
 | `pg_backup_days_to_keep` | Retention window (days) |
 | `pg_backup_cron_enabled` | Also schedule via OS crontab on the target host (default `false` — leave off when Semaphore's own Schedule is the scheduler) |
 | `pg_backup_cron_hour` / `pg_backup_cron_minute` | Only used when `pg_backup_cron_enabled: true` |
@@ -106,6 +107,40 @@ Override role defaults (see `roles/pg_backup/defaults/main.yml`) in
 | `pg_backup_manage_pgpass` | `"auto"` (prefer an existing `.pgpass`, fall back to `pg_backup_password`), or force `true`/`false` — see [Password auth](#password-auth) |
 | `pg_backup_password` | Password used only when the role ends up rendering `.pgpass` itself |
 | `pg_backup_run_now` | Execute the backup during this run (default `true` — this is what makes a scheduled Semaphore run actually take a backup; set `false` for a deploy-only run) |
+
+## Backup storage on a separate mount
+
+If `pg_backup_dir`/`pg_backup_log_dir` live on a separately-mounted
+filesystem (NAS, external disk, etc. — e.g. `/mnt/homelab_backups`), set:
+
+```yaml
+pg_backup_require_mount: true
+pg_backup_mount_path: "/mnt/homelab_backups"
+```
+
+Without this, if the mount isn't attached when the role runs (e.g. after
+a reboot, before the mount unit has come up), Ansible's directory-creation
+task would happily create `pg_backup_dir`/`pg_backup_log_dir` **on the
+root filesystem instead** and report success — backups would keep
+"succeeding" while silently never reaching the intended storage. With it
+set, the role runs `mountpoint -q` against `pg_backup_mount_path` first
+and fails the whole play immediately if it isn't mounted, before
+touching any directories.
+
+The role also verifies (via `stat`) that both directories actually exist
+right after attempting to create them, and fails with a clear message
+naming the path if not — belt-and-suspenders alongside Ansible's normal
+task-failure behavior (a `file` task failing already aborts the play by
+default).
+
+The deployed script carries the same two checks so they still apply on
+every run triggered directly by cron/Semaphore, independent of Ansible:
+it checks `pg_backup_mount_path` with `mountpoint -q` before doing
+anything else (when `pg_backup_require_mount` is set), and checks the
+exit status of `mkdir -p` for both directories, exiting with an error
+instead of continuing silently if either fails. The standalone
+[`pg_backup.sh`](../pg_backup.sh) has an equivalent, manually-set
+`BACKUP_MOUNT_PATH` variable for the same purpose.
 
 ## Password auth
 

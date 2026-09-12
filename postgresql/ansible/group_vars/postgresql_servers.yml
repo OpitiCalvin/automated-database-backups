@@ -1,8 +1,16 @@
 ---
 # Overrides for role defaults (see roles/pg_backup/defaults/main.yml).
-pg_backup_dir: "/var/backups/postgresql"
-pg_backup_log_dir: "/var/log/postgresql_backups"
+# pg_backup_dir: "/var/backups/postgresql"
+pg_backup_dir: "/mnt/homelab_backups/db_backups/postgresql"
+# pg_backup_log_dir: "/var/log/postgresql_backups"
+pg_backup_log_dir: "/mnt/homelab_backups/db_backups/logs"
 pg_backup_days_to_keep: 120
+
+# /mnt/homelab_backups is a separate mount (NAS/external disk) - refuse to
+# create the backup/log directories unless it's actually mounted, so a
+# missing mount fails loudly instead of silently writing to the root disk.
+pg_backup_require_mount: true
+pg_backup_mount_path: "/mnt/homelab_backups"
 pg_backup_db_user: "backup_user"
 pg_backup_os_user: "calvin"
 

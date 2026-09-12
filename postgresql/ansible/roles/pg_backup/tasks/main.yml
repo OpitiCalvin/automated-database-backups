@@ -6,6 +6,27 @@
   when: pg_backup_install_packages | bool
   tags: [deploy]
 
+- name: Verify the backup mount is actually mounted
+  ansible.builtin.command: "mountpoint -q {{ pg_backup_mount_path }}"
+  register: pg_backup_mount_check
+  changed_when: false
+  failed_when: false
+  when: pg_backup_require_mount | bool
+  tags: [deploy]
+
+- name: Fail if the backup mount point is not mounted
+  ansible.builtin.assert:
+    that:
+      - pg_backup_mount_check.rc == 0
+    fail_msg: >-
+      {{ pg_backup_mount_path }} is not currently a mounted filesystem.
+      Refusing to create pg_backup_dir/pg_backup_log_dir under it - doing
+      so would silently create them on the root filesystem instead of the
+      intended mounted storage. Mount it first, then re-run.
+    success_msg: "{{ pg_backup_mount_path }} is mounted."
+  when: pg_backup_require_mount | bool
+  tags: [deploy]
+
 - name: Ensure backup directory exists
   ansible.builtin.file:
     path: "{{ pg_backup_dir }}"
@@ -15,6 +36,20 @@
     mode: "0750"
   tags: [deploy]
 
+- name: Verify backup directory exists
+  ansible.builtin.stat:
+    path: "{{ pg_backup_dir }}"
+  register: pg_backup_dir_stat
+  tags: [deploy]
+
+- name: Fail if the backup directory could not be created
+  ansible.builtin.assert:
+    that:
+      - pg_backup_dir_stat.stat.exists
+      - pg_backup_dir_stat.stat.isdir
+    fail_msg: "{{ pg_backup_dir }} does not exist after attempting to create it - aborting."
+  tags: [deploy]
+
 - name: Ensure log directory exists
   ansible.builtin.file:
     path: "{{ pg_backup_log_dir }}"
@@ -22,6 +57,20 @@
     owner: "{{ pg_backup_os_user }}"
     group: "{{ pg_backup_os_group }}"
     mode: "0750"
+  tags: [deploy]
+
+- name: Verify log directory exists
+  ansible.builtin.stat:
+    path: "{{ pg_backup_log_dir }}"
+  register: pg_backup_log_dir_stat
+  tags: [deploy]
+
+- name: Fail if the log directory could not be created
+  ansible.builtin.assert:
+    that:
+      - pg_backup_log_dir_stat.stat.exists
+      - pg_backup_log_dir_stat.stat.isdir
+    fail_msg: "{{ pg_backup_log_dir }} does not exist after attempting to create it - aborting."
   tags: [deploy]
 
 - name: Check for an existing .pgpass on the target host
